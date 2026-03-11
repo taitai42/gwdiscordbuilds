@@ -1,0 +1,15 @@
+services:
+  gwbot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Bind-mount the local cache folder so pre-downloaded icons are available
+      - ./cache:/app/cache
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
