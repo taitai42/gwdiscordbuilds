@@ -146,10 +146,11 @@ export function buildHelpEmbed(locale, { welcome = false } = {}) {
     .setColor(0x1a1a2e)
     .setDescription(c.intro)
     .addFields(
-      { name: c.quickStart, value: c.quickStartBody },
-      { name: c.commands,   value: [c.cmdBuild, c.cmdLoad, c.cmdTeam, c.cmdLoadTeam, c.cmdBuilder, c.cmdTolkano, c.cmdList, c.cmdImport, c.cmdHelp].join('\n') },
-      { name: c.scopes,     value: c.scopesBody },
-      { name: c.tipsTitle,  value: c.tipsBody },
-      { name: c.links,      value: c.linksBody(PRIVACY_URL, TERMS_URL, REPO_URL) },
+      { name: c.quickStart,    value: c.quickStartBody },
+      { name: c.commands,      value: [c.cmdBuild, c.cmdLoad, c.cmdTeam, c.cmdLoadTeam, c.cmdBuilder].join('\n') },
+      { name: '\u200b',         value: [c.cmdTolkano, c.cmdList, c.cmdImport, c.cmdHelp].join('\n') },
+      { name: c.scopes,        value: c.scopesBody },
+      { name: c.tipsTitle,     value: c.tipsBody },
+      { name: c.links,         value: c.linksBody(PRIVACY_URL, TERMS_URL, REPO_URL) },
     );
 }
