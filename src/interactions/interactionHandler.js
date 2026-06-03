@@ -27,7 +27,8 @@ import {
   encodePickedTeam,
   defaultSlotName,
 } from '../commands/tolkanoimport.js';
-import { saveBuild, loadBuild, saveTeamBuild } from '../lib/buildStore.js';
+import { saveBuild, loadBuild, saveTeamBuild, loadTeamBuild, listBuilds, listTeamBuilds } from '../lib/buildStore.js';
+import { buildListMessage } from '../commands/list.js';
 import { SessionStore } from '../lib/sessionStore.js';
 
 // Used by future flows that want to attach state to a team-build message.
@@ -98,6 +99,51 @@ async function handleSelectMenu(interaction) {
     tbSessions.set(key, session);
     await interaction.deferUpdate();
     return interaction.editReply(await buildTeambuilderMessage(interaction.guildId, userId, locale));
+  }
+
+  // ── /list & /load pickers: pick a build ───────────────────────────────────
+  if (customId.startsWith('load_pick:')) {
+    const userId = customId.split(':')[1];
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const name = values[0];
+    const entry = await loadBuild({ guildId: interaction.guildId, userId, name });
+    if (!entry) {
+      return interaction.reply({ content: t(locale, 'notFound', name), ephemeral: true });
+    }
+
+    // Ack the picker (it stays as ephemeral history), then post the render publicly.
+    await interaction.deferUpdate();
+    await renderBuild(interaction, entry.code, entry.name, locale, {
+      private:   entry.scope === 'private',
+      responder: (payload) => interaction.followUp({ ...payload, ephemeral: false }),
+    });
+    return;
+  }
+
+  // ── /list & /loadteam pickers: pick a team build ──────────────────────────
+  if (customId.startsWith('loadteam_pick:')) {
+    const userId = customId.split(':')[1];
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const name = values[0];
+    const entry = await loadTeamBuild({ guildId: interaction.guildId, userId, name });
+    if (!entry) {
+      return interaction.reply({ content: t(locale, 'teamNotFound', name), ephemeral: true });
+    }
+
+    await interaction.deferUpdate();
+    await renderTeamBuild(interaction, entry.codes, entry.name, locale, {
+      private:   entry.scope === 'private',
+      responder: (payload) => interaction.followUp({ ...payload, ephemeral: false }),
+    });
+    return;
   }
 
   // ── Skill info select ──────────────────────────────────────────────────────
@@ -171,6 +217,22 @@ async function handleButton(interaction) {
     }
   }
 
+  // ── /list refresh button ──────────────────────────────────────────────────
+  if (customId.startsWith('list_refresh:')) {
+    const userId = customId.split(':')[1];
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const [builds, teams] = await Promise.all([
+      listBuilds({ guildId: interaction.guildId, userId }),
+      listTeamBuilds({ guildId: interaction.guildId, userId }),
+    ]);
+    await interaction.deferUpdate();
+    return interaction.editReply(buildListMessage(builds, teams, userId, locale));
+  }
+
   // ── /tolkanoimport: "Import Team N" button → name-each-build screen ───────
   if (customId.startsWith('tolk_pick:')) {
     const [, userId, teamIdxRaw] = customId.split(':');
@@ -195,7 +257,7 @@ async function handleButton(interaction) {
     );
     tolkanoSessions.set(sKey, session);
 
-    await interaction.update(buildTolkanoNameMessage(session, userId, locale));
+    await interaction.update(await buildTolkanoNameMessage(session, userId, locale));
     return;
   }
 
@@ -396,7 +458,7 @@ async function handleModal(interaction) {
     tolkanoSessions.set(sKey, session);
 
     await interaction.deferUpdate();
-    return interaction.editReply(buildTolkanoNameMessage(session, userId, locale));
+    return interaction.editReply(await buildTolkanoNameMessage(session, userId, locale));
   }
 
   // ── /tolkanoimport: rename the team ───────────────────────────────────────
@@ -417,7 +479,7 @@ async function handleModal(interaction) {
     tolkanoSessions.set(sKey, session);
 
     await interaction.deferUpdate();
-    return interaction.editReply(buildTolkanoNameMessage(session, userId, locale));
+    return interaction.editReply(await buildTolkanoNameMessage(session, userId, locale));
   }
 
   // ── Single-build "💾 Save as…" modal submit ───────────────────────────────

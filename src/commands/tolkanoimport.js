@@ -19,13 +19,16 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  AttachmentBuilder,
 } from 'discord.js';
 import { fetchTolkanoMatch } from '../lib/tolkanoImporter.js';
 import {
   tolkanoSessions,
   tolkanoSessionKey,
 } from '../interactions/interactionHandler.js';
-import { PROFESSION_SHORT, encodeTemplate } from '../lib/templateDecoder.js';
+import { PROFESSION_SHORT, encodeTemplate, decodeTemplate } from '../lib/templateDecoder.js';
+import { resolveSkills } from '../lib/skillData.js';
+import { renderTeamBuildImage } from '../lib/skillRenderer.js';
 import { t } from '../data/i18n.js';
 
 export const data = new SlashCommandBuilder()
@@ -128,7 +131,7 @@ export function defaultSlotName(teamSaveName, slotIdx, primaryIdx, secondaryIdx)
  * @param {string} userId
  * @param {string} locale
  */
-export function buildTolkanoNameMessage(session, userId, locale) {
+export async function buildTolkanoNameMessage(session, userId, locale) {
   const team = session.teams[session.teamIdx];
   const players = team.players;
 
@@ -136,6 +139,18 @@ export function buildTolkanoNameMessage(session, userId, locale) {
     session.slotNames = players.map((p, i) =>
       defaultSlotName(session.name, i, p.primaryIdx, p.secondaryIdx),
     );
+  }
+
+  // Render (and cache) the team bar image. The bars themselves don't change
+  // between renames — only the names in the embed do — so we only render once.
+  if (!session.imageBuffer) {
+    const codes = encodePickedTeam(session);
+    const builds = codes.map((code, i) => {
+      const decoded = decodeTemplate(code);
+      const skills  = resolveSkills(decoded.skills);
+      return { decoded, skills, code, savedName: session.slotNames[i] ?? null };
+    });
+    session.imageBuffer = await renderTeamBuildImage(builds);
   }
 
   const lines = players.map((p, i) => {
@@ -151,7 +166,10 @@ export function buildTolkanoNameMessage(session, userId, locale) {
       t(locale, 'tolkNameHelp') +
       '\n\n' + lines.join('\n') +
       `\n\n${session.private ? t(locale, 'privateLabel') : t(locale, 'sharedLabel')}`,
-    );
+    )
+    .setImage('attachment://tolk-preview.png');
+
+  const attachment = new AttachmentBuilder(session.imageBuffer, { name: 'tolk-preview.png' });
 
   // Rename buttons: up to 8, split across 2 rows of 4.
   const renameButtons = players.map((_, i) =>
@@ -183,7 +201,7 @@ export function buildTolkanoNameMessage(session, userId, locale) {
     ),
   );
 
-  return { embeds: [embed], components, content: '' };
+  return { embeds: [embed], components, files: [attachment], content: '' };
 }
 
 /**

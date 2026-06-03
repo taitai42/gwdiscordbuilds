@@ -119,9 +119,11 @@ export async function renderBuild(interaction, code, name, locale, opts = {}) {
   const rowSelect  = new ActionRowBuilder().addComponents(selectMenu);
   const rowButtons = new ActionRowBuilder().addComponents(copyBtn, saveBtn);
 
-  await interaction.editReply({
+  const payload = {
     embeds:     [embed],
     files:      [attachment],
     components: [rowSelect, rowButtons],
-  });
+  };
+  if (opts.responder) await opts.responder(payload);
+  else await interaction.editReply(payload);
 }

@@ -69,6 +69,18 @@ const STRINGS = {
     saveAsInputLabel:   'Save name',
     saveAsInputHint:    'e.g. My Warrior',
 
+    // ── /list & load pickers ────────────────────────────────────────────────
+    listTitle:          '📖 Saved builds in this server',
+    listBuildsHeader:   'Builds',
+    listTeamsHeader:    'Team builds',
+    listEmpty:          'ℹ️ No builds saved yet. Use `/build` or `/teambuild` with the `name` option to save one.',
+    listFooter:         '🔒 = your private save  ·  👥 = shared with the server',
+    listPickBuild:      'Load a build…',
+    listPickTeam:       'Load a team build…',
+    listRefresh:        '🔄 Refresh',
+    loadPickTitle:      '📂 Pick a build to load',
+    loadTeamPickTitle:  '📂 Pick a team build to load',
+
     // ── Tolkano: name each build screen ──────────────────────────────────────
     tolkNameTitle:      (team)         => `🏷️ Name your imported builds — ${team}`,
     tolkNameHelp:       'Click **Rename N** to set the save name for each build. Default names are auto-generated. When you are happy, click **Save & Render**.',
@@ -139,6 +151,17 @@ const STRINGS = {
     saveAsModalTitle:   'Sauvegarder le build',
     saveAsInputLabel:   'Nom de sauvegarde',
     saveAsInputHint:    'ex. Mon Guerrier',
+
+    listTitle:          '📖 Builds sauvegardés sur ce serveur',
+    listBuildsHeader:   'Builds',
+    listTeamsHeader:    'Builds d\'équipe',
+    listEmpty:          'ℹ️ Aucun build sauvegardé. Utilisez `/build` ou `/teambuild` avec l\'option `name` pour en sauvegarder un.',
+    listFooter:         '🔒 = sauvegarde privée  ·  👥 = partagé avec le serveur',
+    listPickBuild:      'Charger un build…',
+    listPickTeam:       'Charger un build d\'équipe…',
+    listRefresh:        '🔄 Rafraîchir',
+    loadPickTitle:      '📂 Choisissez un build à charger',
+    loadTeamPickTitle:  '📂 Choisissez un build d\'équipe à charger',
 
     tolkNameTitle:      (team)         => `🏷️ Nommez vos builds importés — ${team}`,
     tolkNameHelp:       'Cliquez sur **Renommer N** pour définir le nom de chaque build. Des noms par défaut sont générés. Quand vous êtes prêt, cliquez sur **Sauver & Afficher**.',

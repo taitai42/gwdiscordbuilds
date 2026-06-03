@@ -118,13 +118,27 @@ export async function loadTeamBuild({ guildId, userId, name }) {
 /**
  * List all builds visible to a user inside a guild
  * (the guild's shared builds + the user's own private builds).
+ * If `sharedOnly` is true, returns only the guild's shared builds.
  * @param {object} args
  * @param {string} args.guildId
- * @param {string} args.userId
+ * @param {string} [args.userId]
+ * @param {boolean} [args.sharedOnly=false]
  * @returns {Promise<Array<{ name: string, code: string, scope: 'private'|'shared' }>>}
  */
-export async function listBuilds({ guildId, userId }) {
-  const [rows] = await getPool().query(
+export async function listBuilds({ guildId, userId, sharedOnly = false }) {
+  const pool = getPool();
+  if (sharedOnly) {
+    const [rows] = await pool.query(
+      `SELECT name, code, user_id
+         FROM builds
+        WHERE guild_id = ?
+          AND user_id IS NULL
+        ORDER BY name ASC`,
+      [guildId],
+    );
+    return rows.map(r => ({ name: r.name, code: r.code, scope: 'shared' }));
+  }
+  const [rows] = await pool.query(
     `SELECT name, code, user_id
        FROM builds
       WHERE guild_id = ?
@@ -137,6 +151,44 @@ export async function listBuilds({ guildId, userId }) {
     code:  r.code,
     scope: r.user_id ? 'private' : 'shared',
   }));
+}
+
+/**
+ * List all team builds visible to a user inside a guild.
+ * Same scoping rules as {@link listBuilds}.
+ * @param {object} args
+ * @param {string} args.guildId
+ * @param {string} [args.userId]
+ * @param {boolean} [args.sharedOnly=false]
+ * @returns {Promise<Array<{ name: string, codes: string[], scope: 'private'|'shared' }>>}
+ */
+export async function listTeamBuilds({ guildId, userId, sharedOnly = false }) {
+  const pool = getPool();
+  const rowsToEntries = (rows) => rows.map(r => ({
+    name:  r.name,
+    codes: Array.isArray(r.codes) ? r.codes : JSON.parse(r.codes),
+    scope: r.user_id ? 'private' : 'shared',
+  }));
+  if (sharedOnly) {
+    const [rows] = await pool.query(
+      `SELECT name, codes, user_id
+         FROM team_builds
+        WHERE guild_id = ?
+          AND user_id IS NULL
+        ORDER BY name ASC`,
+      [guildId],
+    );
+    return rowsToEntries(rows);
+  }
+  const [rows] = await pool.query(
+    `SELECT name, codes, user_id
+       FROM team_builds
+      WHERE guild_id = ?
+        AND (user_id = ? OR user_id IS NULL)
+      ORDER BY name ASC`,
+    [guildId, userId],
+  );
+  return rowsToEntries(rows);
 }
 
 /**
