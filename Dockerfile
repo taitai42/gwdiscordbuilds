@@ -14,6 +14,7 @@ RUN npm ci --omit=dev
 
 # Copy source
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 COPY schema.sql ./schema.sql
 
 # Seed cache (skill data + icons). On first start, Docker copies this into the
