@@ -113,7 +113,7 @@ function drawAttrBar(ctx, x, y, w, label, level, profColor) {
  * @param {Array}  skills    Array of 8 skill data objects from resolveSkills()
  * @returns {Promise<Buffer>}
  */
-export async function renderBuildBar(decoded, skills, savedName = null) {
+export async function renderBuildBarClassic(decoded, skills, savedName = null) {
   const profColor = PROFESSION_COLORS[decoded.primary]   ?? PROFESSION_COLORS.None;
   const secColor  = PROFESSION_COLORS[decoded.secondary] ?? PROFESSION_COLORS.None;
 
@@ -251,8 +251,8 @@ export async function renderBuildBar(decoded, skills, savedName = null) {
  *
  * @param {Array<{decoded, skills}>} builds
  */
-export async function renderTeamBuildImage(builds) {
-  const barBuffers = await Promise.all(builds.map(b => renderBuildBar(b.decoded, b.skills, b.savedName ?? null)));
+export async function renderTeamBuildImageClassic(builds) {
+  const barBuffers = await Promise.all(builds.map(b => renderBuildBarClassic(b.decoded, b.skills, b.savedName ?? null)));
   const barImages  = await Promise.all(barBuffers.map(buf => loadImage(buf)));
 
   const gap    = 6;
@@ -274,3 +274,18 @@ export async function renderTeamBuildImage(builds) {
 
   return canvas.toBuffer('image/png');
 }
+
+// -- Style dispatcher ----------------------------------------------------------
+// Set BUILD_STYLE=classic to use the original renderer, otherwise the wiki-style
+// renderer is used (default).
+import { renderBuildBarWiki, renderTeamBuildImageWiki } from './skillRendererWiki.js';
+
+const STYLE = (process.env.BUILD_STYLE || 'wiki').toLowerCase();
+
+export const renderBuildBar = STYLE === 'classic'
+  ? renderBuildBarClassic
+  : renderBuildBarWiki;
+
+export const renderTeamBuildImage = STYLE === 'classic'
+  ? renderTeamBuildImageClassic
+  : renderTeamBuildImageWiki;

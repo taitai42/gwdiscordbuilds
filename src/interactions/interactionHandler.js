@@ -15,13 +15,19 @@ import {
   TextInputStyle,
   ActionRowBuilder,
 } from 'discord.js';
-import { decodeTemplate, encodeTemplate } from '../lib/templateDecoder.js';
+import { decodeTemplate } from '../lib/templateDecoder.js';
 import { resolveSkills } from '../lib/skillData.js';
 import { buildSkillInfoEmbed } from '../lib/uiHelpers.js';
 import { t } from '../data/i18n.js';
 import { renderTeamBuild } from '../commands/teambuild.js';
+import { renderBuild } from '../commands/build.js';
 import { tbSessions, buildTeambuilderMessage } from '../commands/teambuilder.js';
-import { saveBuild, loadBuild } from '../lib/buildStore.js';
+import {
+  buildTolkanoNameMessage,
+  encodePickedTeam,
+  defaultSlotName,
+} from '../commands/tolkanoimport.js';
+import { saveBuild, loadBuild, saveTeamBuild } from '../lib/buildStore.js';
 import { SessionStore } from '../lib/sessionStore.js';
 
 // Used by future flows that want to attach state to a team-build message.
@@ -165,7 +171,7 @@ async function handleButton(interaction) {
     }
   }
 
-  // ── /tolkanoimport: "Import Team N" button ────────────────────────────────
+  // ── /tolkanoimport: "Import Team N" button → name-each-build screen ───────
   if (customId.startsWith('tolk_pick:')) {
     const [, userId, teamIdxRaw] = customId.split(':');
     const teamIdx = parseInt(teamIdxRaw, 10);
@@ -175,24 +181,136 @@ async function handleButton(interaction) {
     if (!interaction.inGuild())
       return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
 
-    const session = tolkanoSessions.get(tolkanoSessionKey(interaction.guildId, userId));
+    const sKey = tolkanoSessionKey(interaction.guildId, userId);
+    const session = tolkanoSessions.get(sKey);
     if (!session)
       return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
 
     const team = session.teams[teamIdx];
     if (!team) return interaction.reply({ content: '❌ Team not found.', ephemeral: true });
 
-    // Synthesize template codes from each player's professions + 8 skills.
-    const codes = team.players.map(p => encodeTemplate({
-      primaryIdx:   p.primaryIdx,
-      secondaryIdx: p.secondaryIdx,
-      attributes:   [],
-      skills:       p.skills,
-    }));
+    session.teamIdx   = teamIdx;
+    session.slotNames = team.players.map((p, i) =>
+      defaultSlotName(session.name, i, p.primaryIdx, p.secondaryIdx),
+    );
+    tolkanoSessions.set(sKey, session);
 
-    // Acknowledge in the ephemeral picker, then post the rendered team build publicly.
+    await interaction.update(buildTolkanoNameMessage(session, userId, locale));
+    return;
+  }
+
+  // ── /tolkanoimport: rename a single slot (open modal) ─────────────────────
+  if (customId.startsWith('tolk_rn:')) {
+    const [, userId, slotIdxRaw] = customId.split(':');
+    const slotIdx = parseInt(slotIdxRaw, 10);
+
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const session = tolkanoSessions.get(tolkanoSessionKey(interaction.guildId, userId));
+    if (!session || session.teamIdx == null)
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
+
+    const modal = new ModalBuilder()
+      .setCustomId(`tolk_rn_modal:${userId}:${slotIdx}`)
+      .setTitle(t(locale, 'tolkRenameModal', slotIdx));
+    const input = new TextInputBuilder()
+      .setCustomId('slot_name')
+      .setLabel(t(locale, 'saveAsInputLabel'))
+      .setStyle(TextInputStyle.Short)
+      .setMaxLength(80)
+      .setRequired(true)
+      .setValue(session.slotNames[slotIdx] ?? '');
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    return interaction.showModal(modal);
+  }
+
+  // ── /tolkanoimport: rename the team (open modal) ──────────────────────────
+  if (customId.startsWith('tolk_rn_team:')) {
+    const userId = customId.split(':')[1];
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const session = tolkanoSessions.get(tolkanoSessionKey(interaction.guildId, userId));
+    if (!session || session.teamIdx == null)
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
+
+    const modal = new ModalBuilder()
+      .setCustomId(`tolk_rn_team_modal:${userId}`)
+      .setTitle(t(locale, 'tolkRenameTeamModal'));
+    const input = new TextInputBuilder()
+      .setCustomId('team_name')
+      .setLabel(t(locale, 'saveAsInputLabel'))
+      .setStyle(TextInputStyle.Short)
+      .setMaxLength(80)
+      .setRequired(true)
+      .setValue(session.name);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    return interaction.showModal(modal);
+  }
+
+  // ── /tolkanoimport: cancel ────────────────────────────────────────────────
+  if (customId.startsWith('tolk_cancel:')) {
+    const userId = customId.split(':')[1];
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    tolkanoSessions.delete(tolkanoSessionKey(interaction.guildId, userId));
+    return interaction.update({ content: t(locale, 'tolkCanceled'), embeds: [], components: [] });
+  }
+
+  // ── /tolkanoimport: save & render publicly ────────────────────────────────
+  if (customId.startsWith('tolk_save:')) {
+    const userId = customId.split(':')[1];
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const sKey = tolkanoSessionKey(interaction.guildId, userId);
+    const session = tolkanoSessions.get(sKey);
+    if (!session || session.teamIdx == null)
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
+
+    const codes = encodePickedTeam(session);
+
+    // Save each player's build individually (with their chosen name)
+    for (let i = 0; i < codes.length; i++) {
+      const name = session.slotNames[i]?.trim();
+      if (!name) continue;
+      try {
+        await saveBuild({
+          guildId: interaction.guildId,
+          userId,
+          name,
+          code:    codes[i],
+          private: !!session.private,
+        });
+      } catch (err) {
+        // Continue saving the others even if one collides; report later in summary.
+        console.error('[tolkano] saveBuild failed:', name, err.message);
+      }
+    }
+
+    // Save the team build under the team name
+    try {
+      await saveTeamBuild({
+        guildId: interaction.guildId,
+        userId,
+        name:    session.name,
+        codes,
+        private: !!session.private,
+      });
+    } catch (err) {
+      console.error('[tolkano] saveTeamBuild failed:', err.message);
+    }
+
+    // Ack ephemerally, then post public render.
     await interaction.update({
-      content:    `✅ Imported **${team.name || `Team ${teamIdx + 1}`}** as **${session.name}**.`,
+      content:    t(locale, 'tolkSavedHeader', session.name),
       embeds:     [],
       components: [],
     });
@@ -200,8 +318,25 @@ async function handleButton(interaction) {
       private:   !!session.private,
       responder: (payload) => interaction.followUp({ ...payload, ephemeral: false }),
     });
-    tolkanoSessions.delete(tolkanoSessionKey(interaction.guildId, userId));
+    tolkanoSessions.delete(sKey);
     return;
+  }
+
+  // ── Single-build "💾 Save as…" button → modal ─────────────────────────────
+  if (customId.startsWith('build_save:')) {
+    const code = customId.slice('build_save:'.length);
+    const modal = new ModalBuilder()
+      .setCustomId(`build_save_modal:${code}`)
+      .setTitle(t(locale, 'saveAsModalTitle'));
+    const input = new TextInputBuilder()
+      .setCustomId('build_name')
+      .setLabel(t(locale, 'saveAsInputLabel'))
+      .setStyle(TextInputStyle.Short)
+      .setMaxLength(80)
+      .setPlaceholder(t(locale, 'saveAsInputHint'))
+      .setRequired(true);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    return interaction.showModal(modal);
   }
 
   // ── Copy template button ──────────────────────────────────────────────────
@@ -241,6 +376,80 @@ async function handleButton(interaction) {
 async function handleModal(interaction) {
   const { customId } = interaction;
   const locale = interaction.locale;
+
+  // ── /tolkanoimport: rename a single slot ──────────────────────────────────
+  if (customId.startsWith('tolk_rn_modal:')) {
+    const [, userId, slotIdxRaw] = customId.split(':');
+    const slotIdx = parseInt(slotIdxRaw, 10);
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const sKey = tolkanoSessionKey(interaction.guildId, userId);
+    const session = tolkanoSessions.get(sKey);
+    if (!session || session.teamIdx == null)
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
+
+    const newName = interaction.fields.getTextInputValue('slot_name').trim();
+    if (newName) session.slotNames[slotIdx] = newName;
+    tolkanoSessions.set(sKey, session);
+
+    await interaction.deferUpdate();
+    return interaction.editReply(buildTolkanoNameMessage(session, userId, locale));
+  }
+
+  // ── /tolkanoimport: rename the team ───────────────────────────────────────
+  if (customId.startsWith('tolk_rn_team_modal:')) {
+    const userId = customId.split(':')[1];
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const sKey = tolkanoSessionKey(interaction.guildId, userId);
+    const session = tolkanoSessions.get(sKey);
+    if (!session || session.teamIdx == null)
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
+
+    const newName = interaction.fields.getTextInputValue('team_name').trim();
+    if (newName) session.name = newName;
+    tolkanoSessions.set(sKey, session);
+
+    await interaction.deferUpdate();
+    return interaction.editReply(buildTolkanoNameMessage(session, userId, locale));
+  }
+
+  // ── Single-build "💾 Save as…" modal submit ───────────────────────────────
+  if (customId.startsWith('build_save_modal:')) {
+    const code = customId.slice('build_save_modal:'.length);
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const name = interaction.fields.getTextInputValue('build_name').trim();
+    if (!name)
+      return interaction.reply({ content: '❌ Name cannot be empty.', ephemeral: true });
+
+    try { decodeTemplate(code); } catch (err) {
+      return interaction.reply({ content: t(locale, 'invalidCode', err.message), ephemeral: true });
+    }
+
+    try {
+      await saveBuild({
+        guildId: interaction.guildId,
+        userId:  interaction.user.id,
+        name,
+        code,
+        private: false, // default to shared from button flow; users can pass `private:true` on the slash command for explicit private save
+      });
+    } catch (err) {
+      return interaction.reply({ content: `❌ Save failed: ${err.message}`, ephemeral: true });
+    }
+
+    // Re-render the parent message with the new save name in the footer.
+    await interaction.deferUpdate();
+    return renderBuild(interaction, code, name, locale, { private: false });
+  }
 
   // ── Teambuilder: set team name ─────────────────────────────────────────────
   if (customId.startsWith('tb_modal_name:')) {

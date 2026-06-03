@@ -5,6 +5,12 @@
  * skills + professions per player but **no attribute allocations**, so the
  * generated template codes have empty attributes. The build images will
  * render with "No attributes set" — that is expected.
+ *
+ * Flow:
+ *  1. /tolkanoimport match_id name [private]    → fetch + parse, show team picker
+ *  2. Click "Import Team N"                     → show name-each-build screen
+ *  3. Click "✏️ #N" to rename any slot via modal
+ *  4. Click "✅ Save & Render"                  → save each build + team, public render
  */
 
 import {
@@ -15,8 +21,11 @@ import {
   ButtonStyle,
 } from 'discord.js';
 import { fetchTolkanoMatch } from '../lib/tolkanoImporter.js';
-import { tolkanoSessions, tolkanoSessionKey } from '../interactions/interactionHandler.js';
-import { PROFESSION_SHORT } from '../lib/templateDecoder.js';
+import {
+  tolkanoSessions,
+  tolkanoSessionKey,
+} from '../interactions/interactionHandler.js';
+import { PROFESSION_SHORT, encodeTemplate } from '../lib/templateDecoder.js';
 import { t } from '../data/i18n.js';
 
 export const data = new SlashCommandBuilder()
@@ -45,7 +54,6 @@ export async function execute(interaction) {
   }
   await interaction.deferReply({ ephemeral: true });
 
-  const locale    = interaction.locale;
   const matchId   = interaction.options.getString('match_id', true).trim();
   const name      = interaction.options.getString('name', true).trim();
   const isPrivate = interaction.options.getBoolean('private') ?? false;
@@ -60,8 +68,10 @@ export async function execute(interaction) {
   }
 
   // Stash the parse result so the team-pick button doesn't have to refetch.
-  const key = tolkanoSessionKey(interaction.guildId, interaction.user.id);
-  tolkanoSessions.set(key, { matchId, name, private: isPrivate, teams });
+  tolkanoSessions.set(
+    tolkanoSessionKey(interaction.guildId, interaction.user.id),
+    { matchId, name, private: isPrivate, teams },
+  );
 
   const embed = new EmbedBuilder()
     .setTitle(`📥 Tolkano import — match ${matchId}`)
@@ -92,6 +102,103 @@ export async function execute(interaction) {
     embeds:     [embed],
     components: [new ActionRowBuilder().addComponents(buttons)],
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Name-each-build screen
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generate a default save name for an imported tolkano build.
+ *  e.g. `MyTeam_1_W-Mo`
+ */
+export function defaultSlotName(teamSaveName, slotIdx, primaryIdx, secondaryIdx) {
+  const pri = PROFESSION_SHORT[primaryIdx]   || 'X';
+  const sec = PROFESSION_SHORT[secondaryIdx] || 'X';
+  // Discord-safe: trim and avoid characters that look bad in names
+  const base = String(teamSaveName).replace(/\s+/g, '_').slice(0, 24);
+  return `${base}_${slotIdx + 1}_${pri}-${sec}`.slice(0, 60);
+}
+
+/**
+ * Build the payload for the ephemeral "name your imported builds" screen.
+ * Reads (and lazily fills) `session.slotNames` from the picked team's players.
+ *
+ * @param {object} session  tolkano session object
+ * @param {string} userId
+ * @param {string} locale
+ */
+export function buildTolkanoNameMessage(session, userId, locale) {
+  const team = session.teams[session.teamIdx];
+  const players = team.players;
+
+  if (!Array.isArray(session.slotNames) || session.slotNames.length !== players.length) {
+    session.slotNames = players.map((p, i) =>
+      defaultSlotName(session.name, i, p.primaryIdx, p.secondaryIdx),
+    );
+  }
+
+  const lines = players.map((p, i) => {
+    const pri = PROFESSION_SHORT[p.primaryIdx]   || '?';
+    const sec = PROFESSION_SHORT[p.secondaryIdx] || '?';
+    return t(locale, 'tolkSlotLine', i, `${pri}/${sec}`, truncate(p.name || '(player)', 24), session.slotNames[i]);
+  });
+
+  const embed = new EmbedBuilder()
+    .setTitle(t(locale, 'tolkNameTitle', session.name))
+    .setColor(0x1a1a2e)
+    .setDescription(
+      t(locale, 'tolkNameHelp') +
+      '\n\n' + lines.join('\n') +
+      `\n\n${session.private ? t(locale, 'privateLabel') : t(locale, 'sharedLabel')}`,
+    );
+
+  // Rename buttons: up to 8, split across 2 rows of 4.
+  const renameButtons = players.map((_, i) =>
+    new ButtonBuilder()
+      .setCustomId(`tolk_rn:${userId}:${i}`)
+      .setLabel(t(locale, 'tolkRenameBtn', i))
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  const components = [];
+  for (let r = 0; r < renameButtons.length; r += 4) {
+    components.push(new ActionRowBuilder().addComponents(renameButtons.slice(r, r + 4)));
+  }
+
+  components.push(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`tolk_rn_team:${userId}`)
+        .setLabel(t(locale, 'tolkRenameTeamBtn'))
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`tolk_save:${userId}`)
+        .setLabel(t(locale, 'tolkSaveRenderBtn'))
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`tolk_cancel:${userId}`)
+        .setLabel(t(locale, 'tolkCancelBtn'))
+        .setStyle(ButtonStyle.Danger),
+    ),
+  );
+
+  return { embeds: [embed], components, content: '' };
+}
+
+/**
+ * Encode the picked team's players into template codes (in slot order).
+ * @param {object} session
+ * @returns {string[]} template codes
+ */
+export function encodePickedTeam(session) {
+  const team = session.teams[session.teamIdx];
+  return team.players.map(p => encodeTemplate({
+    primaryIdx:   p.primaryIdx,
+    secondaryIdx: p.secondaryIdx,
+    attributes:   [],
+    skills:       p.skills,
+  }));
 }
 
 function truncate(s, n) {

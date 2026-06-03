@@ -63,6 +63,25 @@ const STRINGS = {
     notYourBuilder:     '⚠️ This builder belongs to someone else.',
     pickAtLeastOne:     '⚠️ Select at least one build first.',
 
+    // ── Save-as modal (single build) ─────────────────────────────────────────
+    saveAsBtn:          '💾 Save as…',
+    saveAsModalTitle:   'Save build',
+    saveAsInputLabel:   'Save name',
+    saveAsInputHint:    'e.g. My Warrior',
+
+    // ── Tolkano: name each build screen ──────────────────────────────────────
+    tolkNameTitle:      (team)         => `🏷️ Name your imported builds — ${team}`,
+    tolkNameHelp:       'Click **Rename N** to set the save name for each build. Default names are auto-generated. When you are happy, click **Save & Render**.',
+    tolkSlotLine:       (i, ps, player, name) => `**${i + 1}.** \`${ps}\` · ${player} → **${name}**`,
+    tolkRenameBtn:      (i)            => `✏️ #${i + 1}`,
+    tolkRenameTeamBtn:  '✏️ Team name',
+    tolkSaveRenderBtn:  '✅ Save & Render',
+    tolkCancelBtn:      '✖ Cancel',
+    tolkRenameModal:    (i)            => `Rename Build #${i + 1}`,
+    tolkRenameTeamModal:'Rename Team',
+    tolkSavedHeader:    (team)         => `✅ Imported **${team}**`,
+    tolkCanceled:       '✖ Import canceled.',
+
     // ── Misc ─────────────────────────────────────────────────────────────────
     copyContent:        (code)        => `\`\`\`\n${code}\n\`\`\``,
     noTemplateCode:     '⚠️ Could not find template code.',
@@ -115,6 +134,23 @@ const STRINGS = {
     sessionExpired:     '⚠️ Session expirée. Relancez /teambuilder.',
     notYourBuilder:     '⚠️ Ce builder appartient à quelqu\'un d\'autre.',
     pickAtLeastOne:     '⚠️ Sélectionnez au moins un build d\'abord.',
+
+    saveAsBtn:          '💾 Sauvegarder sous…',
+    saveAsModalTitle:   'Sauvegarder le build',
+    saveAsInputLabel:   'Nom de sauvegarde',
+    saveAsInputHint:    'ex. Mon Guerrier',
+
+    tolkNameTitle:      (team)         => `🏷️ Nommez vos builds importés — ${team}`,
+    tolkNameHelp:       'Cliquez sur **Renommer N** pour définir le nom de chaque build. Des noms par défaut sont générés. Quand vous êtes prêt, cliquez sur **Sauver & Afficher**.',
+    tolkSlotLine:       (i, ps, player, name) => `**${i + 1}.** \`${ps}\` · ${player} → **${name}**`,
+    tolkRenameBtn:      (i)            => `✏️ #${i + 1}`,
+    tolkRenameTeamBtn:  '✏️ Nom d\'équipe',
+    tolkSaveRenderBtn:  '✅ Sauver & Afficher',
+    tolkCancelBtn:      '✖ Annuler',
+    tolkRenameModal:    (i)            => `Renommer le build #${i + 1}`,
+    tolkRenameTeamModal:'Renommer l\'équipe',
+    tolkSavedHeader:    (team)         => `✅ **${team}** importée`,
+    tolkCanceled:       '✖ Import annulé.',
 
     copyContent:        (code)        => `\`\`\`\n${code}\n\`\`\``,
     noTemplateCode:     '⚠️ Impossible de retrouver le code du template.',

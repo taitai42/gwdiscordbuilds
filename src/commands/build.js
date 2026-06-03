@@ -111,8 +111,13 @@ export async function renderBuild(interaction, code, name, locale, opts = {}) {
     .setLabel(t(locale, 'copyTemplate'))
     .setStyle(ButtonStyle.Secondary);
 
+  const saveBtn = new ButtonBuilder()
+    .setCustomId(`build_save:${code}`)
+    .setLabel(t(locale, 'saveAsBtn'))
+    .setStyle(ButtonStyle.Primary);
+
   const rowSelect  = new ActionRowBuilder().addComponents(selectMenu);
-  const rowButtons = new ActionRowBuilder().addComponents(copyBtn);
+  const rowButtons = new ActionRowBuilder().addComponents(copyBtn, saveBtn);
 
   await interaction.editReply({
     embeds:     [embed],
