@@ -16,7 +16,9 @@ RUN npm ci --omit=dev
 COPY src/ ./src/
 COPY schema.sql ./schema.sql
 
-# Cache dir persists via volume mount; create it in image too
+# Seed cache (skill data + icons). On first start, Docker copies this into the
+# named volume mounted at /app/cache, so the bot has data immediately.
+COPY cache/ ./cache/
 RUN mkdir -p cache/icons
 
 # Run as non-root

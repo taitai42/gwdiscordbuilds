@@ -7,13 +7,5 @@ npm-debug.log*
 .gitignore
 *.md
 LICENSE
-cache/
-!cache/.gitkeep
-!cache/icons/.gitkeep
-node_modules/
-npm-debug.log*
-.env
-.git/
-.github/
-README.md
-*.md
+# NOTE: cache/ is intentionally NOT ignored — Dockerfile COPYs it so the
+# named volume gets seeded with skillData.json + icons on first start.

@@ -34,8 +34,9 @@ services:
       db:
         condition: service_healthy
     volumes:
-      # Persist downloaded skill icons and wiki cache across container restarts
-      - ./cache:/app/cache
+      # Persist downloaded skill icons and wiki cache across container restarts.
+      # Named volume (not bind mount) so ownership matches the non-root botuser (uid 1001).
+      - bot-cache:/app/cache
     logging:
       driver: json-file
       options:
@@ -44,3 +45,4 @@ services:
 
 volumes:
   db-data:
+  bot-cache:
