@@ -6,6 +6,7 @@
  *  • copy_template:<code>       →  ephemeral reply with raw template code
  *  • replace:<index>:<code>     →  prompt user for new template code via modal
  *  • replace_modal:<index>      →  re-render team build with replaced slot
+ *  • tb_*                       →  interactive /teambuilder flow
  */
 
 import {
@@ -14,19 +15,27 @@ import {
   TextInputStyle,
   ActionRowBuilder,
 } from 'discord.js';
-import { decodeTemplate } from '../lib/templateDecoder.js';
+import { decodeTemplate, encodeTemplate } from '../lib/templateDecoder.js';
 import { resolveSkills } from '../lib/skillData.js';
 import { buildSkillInfoEmbed } from '../lib/uiHelpers.js';
 import { t } from '../data/i18n.js';
 import { renderTeamBuild } from '../commands/teambuild.js';
 import { tbSessions, buildTeambuilderMessage } from '../commands/teambuilder.js';
 import { saveBuild, loadBuild } from '../lib/buildStore.js';
+import { SessionStore } from '../lib/sessionStore.js';
 
-// In-memory store for ongoing team build sessions
-const teamSessions = new Map();
-
+// Used by future flows that want to attach state to a team-build message.
+// Currently unused but kept exported for backward compatibility.
+const teamSessions = new SessionStore();
 export function saveSession(key, builds) { teamSessions.set(key, builds); }
 export function getSession(key)          { return teamSessions.get(key); }
+
+// /tolkanoimport: stash the parsed teams between the slash command and the
+// "Import Team N" button click, keyed by guild+user.
+export const tolkanoSessions = new SessionStore();
+export const tolkanoSessionKey = (guildId, userId) => `${guildId}:${userId}:tolkano`;
+
+const tbKey = (guildId, userId) => `${guildId}:${userId}`;
 
 export async function handleInteraction(interaction) {
   if      (interaction.isStringSelectMenu()) await handleSelectMenu(interaction);
@@ -48,11 +57,14 @@ async function handleSelectMenu(interaction) {
     const value   = values[0];
 
     if (interaction.user.id !== userId)
-      return interaction.reply({ content: '⚠️ This builder belongs to someone else.', ephemeral: true });
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
 
-    const session = tbSessions.get(userId);
+    const key = tbKey(interaction.guildId, userId);
+    const session = tbSessions.get(key);
     if (!session)
-      return interaction.reply({ content: '⚠️ Session expired. Run /teambuilder again.', ephemeral: true });
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
 
     if (value === 'tb_custom') {
       const modal = new ModalBuilder()
@@ -74,11 +86,12 @@ async function handleSelectMenu(interaction) {
     if (value === 'tb_clear') {
       session.slots[slotIdx] = null;
     } else {
-      const entry = loadBuild(value);
+      const entry = await loadBuild({ guildId: interaction.guildId, userId, name: value });
       if (entry) session.slots[slotIdx] = { name: entry.name, code: entry.code };
     }
+    tbSessions.set(key, session);
     await interaction.deferUpdate();
-    return interaction.editReply(buildTeambuilderMessage(userId));
+    return interaction.editReply(await buildTeambuilderMessage(interaction.guildId, userId, locale));
   }
 
   // ── Skill info select ──────────────────────────────────────────────────────
@@ -86,8 +99,8 @@ async function handleSelectMenu(interaction) {
     const slotIndex = parseInt(values[0], 10);
 
     const templateCode = interaction.message.embeds[0]?.footer?.text
-      ?.replace(/^Template\s*:\s*/i, '')  // strip "Template: " prefix
-      ?.replace(/\s*·\s*💾.*/u, '')       // strip " · 💾 name" suffix
+      ?.replace(/^Template\s*:\s*/i, '')
+      ?.replace(/\s*·\s*💾.*/u, '')
       ?.trim();
 
     if (!templateCode) {
@@ -113,11 +126,14 @@ async function handleButton(interaction) {
     const [prefix, userId] = customId.split(':');
 
     if (interaction.user.id !== userId)
-      return interaction.reply({ content: '⚠️ This builder belongs to someone else.', ephemeral: true });
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
 
-    const session = tbSessions.get(userId);
+    const key = tbKey(interaction.guildId, userId);
+    const session = tbSessions.get(key);
     if (!session)
-      return interaction.reply({ content: '⚠️ Session expired. Run /teambuilder again.', ephemeral: true });
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
 
     if (prefix === 'tb_name') {
       const modal = new ModalBuilder()
@@ -133,26 +149,67 @@ async function handleButton(interaction) {
 
     if (prefix === 'tb_page') {
       session.page = session.page === 0 ? 1 : 0;
+      tbSessions.set(key, session);
       await interaction.deferUpdate();
-      return interaction.editReply(buildTeambuilderMessage(userId));
+      return interaction.editReply(await buildTeambuilderMessage(interaction.guildId, userId, locale));
     }
 
     if (prefix === 'tb_render') {
       const codes = session.slots.filter(Boolean).map(s => s.code);
       if (codes.length === 0)
-        return interaction.reply({ content: '⚠️ Select at least one build first.', ephemeral: true });
+        return interaction.reply({ content: t(locale, 'pickAtLeastOne'), ephemeral: true });
       await interaction.deferUpdate();
       await renderTeamBuild(interaction, codes, session.name, locale);
-      tbSessions.delete(userId);
+      tbSessions.delete(key);
       return;
     }
   }
 
+  // ── /tolkanoimport: "Import Team N" button ────────────────────────────────
+  if (customId.startsWith('tolk_pick:')) {
+    const [, userId, teamIdxRaw] = customId.split(':');
+    const teamIdx = parseInt(teamIdxRaw, 10);
+
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const session = tolkanoSessions.get(tolkanoSessionKey(interaction.guildId, userId));
+    if (!session)
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
+
+    const team = session.teams[teamIdx];
+    if (!team) return interaction.reply({ content: '❌ Team not found.', ephemeral: true });
+
+    // Synthesize template codes from each player's professions + 8 skills.
+    const codes = team.players.map(p => encodeTemplate({
+      primaryIdx:   p.primaryIdx,
+      secondaryIdx: p.secondaryIdx,
+      attributes:   [],
+      skills:       p.skills,
+    }));
+
+    // Acknowledge in the ephemeral picker, then post the rendered team build publicly.
+    await interaction.update({
+      content:    `✅ Imported **${team.name || `Team ${teamIdx + 1}`}** as **${session.name}**.`,
+      embeds:     [],
+      components: [],
+    });
+    await renderTeamBuild(interaction, codes, session.name, locale, {
+      private:   !!session.private,
+      responder: (payload) => interaction.followUp({ ...payload, ephemeral: false }),
+    });
+    tolkanoSessions.delete(tolkanoSessionKey(interaction.guildId, userId));
+    return;
+  }
+
   // ── Copy template button ──────────────────────────────────────────────────
   if (customId.startsWith('copy_template:')) {
-    // format: copy_template:<index>:<code>  (index kept unique across builds)
-    const rest  = customId.slice('copy_template:'.length);
-    const code  = rest.slice(rest.indexOf(':') + 1);
+    // formats: `copy_template:<code>` or `copy_template:<index>:<code>`
+    const rest = customId.slice('copy_template:'.length);
+    const idx  = rest.indexOf(':');
+    const code = idx >= 0 ? rest.slice(idx + 1) : rest;
     return interaction.reply({
       content:   t(locale, 'copyContent', code),
       ephemeral: true,
@@ -188,12 +245,16 @@ async function handleModal(interaction) {
   // ── Teambuilder: set team name ─────────────────────────────────────────────
   if (customId.startsWith('tb_modal_name:')) {
     const userId  = customId.slice('tb_modal_name:'.length);
-    const session = tbSessions.get(userId);
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+    const key = tbKey(interaction.guildId, userId);
+    const session = tbSessions.get(key);
     if (!session)
-      return interaction.reply({ content: '⚠️ Session expired. Run /teambuilder again.', ephemeral: true });
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
     session.name = interaction.fields.getTextInputValue('team_name').trim();
+    tbSessions.set(key, session);
     await interaction.deferUpdate();
-    return interaction.editReply(buildTeambuilderMessage(userId));
+    return interaction.editReply(await buildTeambuilderMessage(interaction.guildId, userId, locale));
   }
 
   // ── Teambuilder: enter custom build ───────────────────────────────────────
@@ -201,9 +262,12 @@ async function handleModal(interaction) {
     const parts   = customId.split(':');
     const userId  = parts[1];
     const slotIdx = parseInt(parts[2], 10);
-    const session = tbSessions.get(userId);
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+    const key = tbKey(interaction.guildId, userId);
+    const session = tbSessions.get(key);
     if (!session)
-      return interaction.reply({ content: '⚠️ Session expired. Run /teambuilder again.', ephemeral: true });
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
 
     const code = interaction.fields.getTextInputValue('build_code').trim();
     const name = interaction.fields.getTextInputValue('build_name').trim();
@@ -212,10 +276,12 @@ async function handleModal(interaction) {
       return interaction.reply({ content: `❌ Invalid code: ${err.message}`, ephemeral: true });
     }
 
-    saveBuild(name, code);
+    // Custom builds entered in the team builder are saved as shared to the guild.
+    await saveBuild({ guildId: interaction.guildId, userId, name, code, private: false });
     session.slots[slotIdx] = { name, code };
+    tbSessions.set(key, session);
     await interaction.deferUpdate();
-    return interaction.editReply(buildTeambuilderMessage(userId));
+    return interaction.editReply(await buildTeambuilderMessage(interaction.guildId, userId, locale));
   }
 
   // ── Teambuild: replace slot ────────────────────────────────────────────────
@@ -232,13 +298,24 @@ async function handleModal(interaction) {
     const codes = oldButtons.map(b => b.customId.split(':').slice(2).join(':'));
     codes[slotIndex] = newCode;
 
-    // Recover saved name from the hidden disabled button (if present)
+    // Recover saved name + scope from the hidden disabled button (if present).
+    // Format: `saved_name:<scope>:<name>` (newer) or `saved_name:<name>` (older).
     const savedNameBtn = interaction.message.components
       .flatMap(row => row.components)
       .find(c => c.customId?.startsWith('saved_name:'));
-    const savedName = savedNameBtn ? savedNameBtn.customId.slice('saved_name:'.length) : null;
+    let savedName = null;
+    let savedScope = 'shared';
+    if (savedNameBtn) {
+      const tail = savedNameBtn.customId.slice('saved_name:'.length);
+      const firstColon = tail.indexOf(':');
+      if (firstColon >= 0 && (tail.startsWith('private:') || tail.startsWith('shared:'))) {
+        savedScope = tail.slice(0, firstColon);
+        savedName  = tail.slice(firstColon + 1);
+      } else {
+        savedName = tail;
+      }
+    }
 
-    await renderTeamBuild(interaction, codes, savedName, locale);
+    await renderTeamBuild(interaction, codes, savedName, locale, { private: savedScope === 'private' });
   }
 }
-

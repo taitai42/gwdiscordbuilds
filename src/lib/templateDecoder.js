@@ -144,3 +144,59 @@ export function decodeTemplate(code) {
     raw: clean,
   };
 }
+
+// ── Encoder ──────────────────────────────────────────────────────────────────
+
+/**
+ * Encode a build into a GW1 template code.
+ *
+ * @param {object} build
+ * @param {number} build.primaryIdx     Profession index (0–10)
+ * @param {number} build.secondaryIdx   Profession index (0–10)
+ * @param {Array<{id:number,level:number}>} [build.attributes]
+ * @param {number[]} build.skills       Exactly 8 skill template IDs; use 0 for empty
+ * @returns {string}                    Template code (base64-ish)
+ */
+export function encodeTemplate({ primaryIdx, secondaryIdx, attributes = [], skills }) {
+  if (!Array.isArray(skills) || skills.length !== 8) {
+    throw new Error('encodeTemplate requires exactly 8 skill IDs');
+  }
+
+  // Choose field widths that comfortably fit GW1's value ranges.
+  // Profession indices are 0–10 → 4 bits is enough (profBitsExtra=0).
+  // Attribute IDs are < 64 in vanilla GW1 → 6 bits → attrBitsExtra=2 (attrBits=6).
+  // Skill template IDs go up to ~3500 → 12 bits → skillBitsExtra=4 (skillBits=12).
+  const profBits      = 4; const profBitsExtra      = 0;
+  const attrBits      = 6; const attrBitsExtra      = attrBits - 4;
+  const skillBits     = 12; const skillBitsExtra    = skillBits - 8;
+
+  const bits = [];
+  const pushBits = (value, n) => {
+    for (let i = 0; i < n; i++) bits.push((value >> i) & 1);
+  };
+
+  pushBits(14, 4);                  // template type
+  pushBits(0,  4);                  // version
+  pushBits(profBitsExtra, 2);
+  pushBits(primaryIdx,   profBits);
+  pushBits(secondaryIdx, profBits);
+  pushBits(attributes.length, 4);
+  pushBits(attrBitsExtra,     4);
+  for (const a of attributes) {
+    pushBits(a.id,    attrBits);
+    pushBits(a.level, 4);
+  }
+  pushBits(skillBitsExtra, 4);
+  for (const s of skills) pushBits(s | 0, skillBits);
+
+  // Pad to a multiple of 6 with zero bits
+  while (bits.length % 6 !== 0) bits.push(0);
+
+  let out = '';
+  for (let i = 0; i < bits.length; i += 6) {
+    let val = 0;
+    for (let b = 0; b < 6; b++) val |= bits[i + b] << b;
+    out += ALPHABET[val];
+  }
+  return out;
+}

@@ -52,9 +52,16 @@ const STRINGS = {
     // ── Save / Load ───────────────────────────────────────────────────────────
     buildSaved:         (name)        => `✅ Build saved as **${name}**`,
     teamSaved:          (name)        => `✅ Team build saved as **${name}**`,
-    notFound:           (name)        => `❌ No saved build found with name **${name}**`,
-    teamNotFound:       (name)        => `❌ No saved team build found with name **${name}**`,
+    notFound:           (name)        => `❌ No saved build found with name **${name}** in this server`,
+    teamNotFound:       (name)        => `❌ No saved team build found with name **${name}** in this server`,
     savedNameBtn:       (name)        => `💾 ${name}`,
+    privateLabel:       '🔒 private',
+    sharedLabel:        '👥 shared',
+    privateOptionDesc:  'When true, this save is only visible to you in this server',
+    guildOnly:          '⚠️ This command can only be used inside a Discord server.',
+    sessionExpired:     '⚠️ Session expired. Run /teambuilder again.',
+    notYourBuilder:     '⚠️ This builder belongs to someone else.',
+    pickAtLeastOne:     '⚠️ Select at least one build first.',
 
     // ── Misc ─────────────────────────────────────────────────────────────────
     copyContent:        (code)        => `\`\`\`\n${code}\n\`\`\``,
@@ -98,9 +105,16 @@ const STRINGS = {
     // ── Save / Load ───────────────────────────────────────────────────────────
     buildSaved:         (name)        => `✅ Build sauvegardé sous **${name}**`,
     teamSaved:          (name)        => `✅ Build d'équipe sauvegardé sous **${name}**`,
-    notFound:           (name)        => `❌ Aucun build trouvé avec le nom **${name}**`,
-    teamNotFound:       (name)        => `❌ Aucun build d'équipe trouvé avec le nom **${name}**`,
+    notFound:           (name)        => `❌ Aucun build trouvé avec le nom **${name}** sur ce serveur`,
+    teamNotFound:       (name)        => `❌ Aucun build d'équipe trouvé avec le nom **${name}** sur ce serveur`,
     savedNameBtn:       (name)        => `💾 ${name}`,
+    privateLabel:       '🔒 privé',
+    sharedLabel:        '👥 partagé',
+    privateOptionDesc:  'Si vrai, cette sauvegarde n\'est visible que par vous sur ce serveur',
+    guildOnly:          '⚠️ Cette commande ne peut être utilisée que dans un serveur Discord.',
+    sessionExpired:     '⚠️ Session expirée. Relancez /teambuilder.',
+    notYourBuilder:     '⚠️ Ce builder appartient à quelqu\'un d\'autre.',
+    pickAtLeastOne:     '⚠️ Sélectionnez au moins un build d\'abord.',
 
     copyContent:        (code)        => `\`\`\`\n${code}\n\`\`\``,
     noTemplateCode:     '⚠️ Impossible de retrouver le code du template.',

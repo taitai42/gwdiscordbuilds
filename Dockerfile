@@ -14,6 +14,7 @@ RUN npm ci --omit=dev
 
 # Copy source
 COPY src/ ./src/
+COPY schema.sql ./schema.sql
 
 # Cache dir persists via volume mount; create it in image too
 RUN mkdir -p cache/icons

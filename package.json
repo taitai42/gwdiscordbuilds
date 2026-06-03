@@ -4,6 +4,12 @@
   "description": "Discord bot that renders Guild Wars 1 build template codes as skill bars",
   "main": "src/index.js",
   "type": "module",
+  "license": "MIT",
+  "author": "taitai42",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/taitai42/gwdiscordbuilds"
+  },
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
@@ -15,7 +21,8 @@
     "@napi-rs/canvas": "^0.1.57",
     "axios": "^1.6.0",
     "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "mysql2": "^3.11.0"
   },
   "engines": {
     "node": ">=18.0.0"

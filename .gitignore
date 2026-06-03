@@ -2,4 +2,16 @@ node_modules/
 .env
 *.log
 dist/
+
+# Cache contents (downloaded wiki data + icons) are generated at runtime.
+# Keep the folder itself committed so volume mounts have a target.
+cache/*
+!cache/.gitkeep
+!cache/icons/
+cache/icons/*
+!cache/icons/.gitkeep
+node_modules/
+.env
+*.log
+dist/
 cache/

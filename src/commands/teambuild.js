@@ -1,6 +1,6 @@
 /**
  * /teambuild command
- * Usage: /teambuild [name:<savename>] build1:<code> ... [build8:<code>]
+ * Usage: /teambuild [name:<savename>] [private:true] build1:<code> ... [build8:<code>]
  */
 
 import {
@@ -31,17 +31,28 @@ function addBuildOptions(builder) {
 export const data = addBuildOptions(
   new SlashCommandBuilder()
     .setName('teambuild')
-    .setDescription('Render a full Guild Wars 1 team build / Afficher un build d\'équipe GW1'),
-).addStringOption(opt =>
-  opt.setName('name')
-     .setDescription('Save this team build under a name for later use with /loadteam')
-     .setRequired(false),
-);
+    .setDescription('Render a full Guild Wars 1 team build / Afficher un build d\'équipe GW1')
+    .setDMPermission(false),
+)
+  .addStringOption(opt =>
+    opt.setName('name')
+       .setDescription('Save this team build under a name for later use with /loadteam')
+       .setRequired(false),
+  )
+  .addBooleanOption(opt =>
+    opt.setName('private')
+       .setDescription('If true, only you can /loadteam this team build in this server')
+       .setRequired(false),
+  );
 
 export async function execute(interaction) {
+  if (!interaction.inGuild()) {
+    return interaction.reply({ content: t(interaction.locale, 'guildOnly'), ephemeral: true });
+  }
   await interaction.deferReply();
-  const locale = interaction.locale;
-  const name   = interaction.options.getString('name')?.trim() || null;
+  const locale    = interaction.locale;
+  const name      = interaction.options.getString('name')?.trim() || null;
+  const isPrivate = interaction.options.getBoolean('private') ?? false;
 
   const rawCodes = [];
   for (let i = 1; i <= 8; i++) {
@@ -53,17 +64,20 @@ export async function execute(interaction) {
     return interaction.editReply({ content: t(locale, 'noBuildCode') });
   }
 
-  await renderTeamBuild(interaction, rawCodes, name, locale);
+  await renderTeamBuild(interaction, rawCodes, name, locale, { private: isPrivate });
 }
 
 /**
  * Shared render helper — used by /teambuild, /loadteam, and the replace modal.
  * @param {import('discord.js').ChatInputCommandInteraction | import('discord.js').ModalSubmitInteraction} interaction
  * @param {string[]}    codes   Template codes
- * @param {string|null} name    Save name (null = anonymous)
+ * @param {string|null} name    Save name (null = anonymous, no save)
  * @param {string}      [locale]
+ * @param {object}      [opts]
+ * @param {boolean}     [opts.private] If true and `name` is set, save as user-private
+ * @param {(payload:any)=>Promise<any>} [opts.responder] Custom sender (defaults to interaction.editReply)
  */
-export async function renderTeamBuild(interaction, codes, name, locale) {
+export async function renderTeamBuild(interaction, codes, name, locale, opts = {}) {
   locale ??= interaction.locale;
 
   const builds = [];
@@ -71,10 +85,12 @@ export async function renderTeamBuild(interaction, codes, name, locale) {
 
   for (let i = 0; i < codes.length; i++) {
     try {
-      const decoded    = decodeTemplate(codes[i]);
-      const skills     = resolveSkills(decoded.skills);
-      const savedName  = findBuildByCode(codes[i])?.name ?? null;
-      builds.push({ decoded, skills, code: codes[i], savedName });
+      const decoded = decodeTemplate(codes[i]);
+      const skills  = resolveSkills(decoded.skills);
+      const saved   = interaction.inGuild()
+        ? await findBuildByCode({ guildId: interaction.guildId, userId: interaction.user.id, code: codes[i] })
+        : null;
+      builds.push({ decoded, skills, code: codes[i], savedName: saved?.name ?? null });
     } catch (err) {
       errors.push(`Build ${i + 1}: ${err.message}`);
     }
@@ -84,12 +100,23 @@ export async function renderTeamBuild(interaction, codes, name, locale) {
     return interaction.editReply({ content: t(locale, 'allFailed', errors.join('\n')) });
   }
 
-  if (name) saveTeamBuild(name, builds.map(b => b.code));
+  if (name && interaction.inGuild()) {
+    await saveTeamBuild({
+      guildId: interaction.guildId,
+      userId:  interaction.user.id,
+      name,
+      codes:   builds.map(b => b.code),
+      private: !!opts.private,
+    });
+  }
 
   const imgBuffer  = await renderTeamBuildImage(builds);
   const attachment = new AttachmentBuilder(imgBuffer, { name: 'teambuild.png' });
 
-  const footerText = t(locale, 'teamFooter', builds.length) + (name ? ` · 💾 ${name}` : '');
+  const scopeTag = name
+    ? ` · ${opts.private ? t(locale, 'privateLabel') : t(locale, 'sharedLabel')}`
+    : '';
+  const footerText = t(locale, 'teamFooter', builds.length) + (name ? ` · 💾 ${name}${scopeTag}` : '');
 
   const embed = new EmbedBuilder()
     .setTitle(t(locale, 'teamBuildTitle'))
@@ -123,12 +150,13 @@ export async function renderTeamBuild(interaction, codes, name, locale) {
   for (let r = 0; r < copyButtons.length; r += 5)
     components.push(new ActionRowBuilder().addComponents(copyButtons.slice(r, r + 5)));
 
-  // Hidden disabled button to carry the save name through replace interactions
+  // Hidden disabled button to carry the save name + scope through replace interactions
   if (name) {
+    const scope = opts.private ? 'private' : 'shared';
     components.push(
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId(`saved_name:${name}`)
+          .setCustomId(`saved_name:${scope}:${name}`)
           .setLabel(t(locale, 'savedNameBtn', name))
           .setStyle(ButtonStyle.Secondary)
           .setDisabled(true),
@@ -136,10 +164,11 @@ export async function renderTeamBuild(interaction, codes, name, locale) {
     );
   }
 
-  await interaction.editReply({
+  const payload = {
     embeds:     [embed],
     files:      [attachment],
     components: components.slice(0, 5),
-  });
+  };
+  if (opts.responder) await opts.responder(payload);
+  else await interaction.editReply(payload);
 }
-

@@ -1,6 +1,10 @@
 /**
  * /teambuilder command
  * Interactive team builder: pick saved builds from dropdowns or paste new ones.
+ *
+ * Sessions are keyed by `${guildId}:${userId}` so the same user can run
+ * separate builders in different guilds. State lives in an in-memory store
+ * with TTL — abandoned sessions are evicted automatically.
  */
 
 import {
@@ -13,38 +17,46 @@ import {
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
 import { listBuilds } from '../lib/buildStore.js';
+import { SessionStore } from '../lib/sessionStore.js';
+import { t } from '../data/i18n.js';
 
-// ── In-memory sessions ────────────────────────────────────────────────────────
-// key: userId  →  { name: string|null, slots: Array(8) of {name,code}|null, page: 0|1 }
-export const tbSessions = new Map();
+export const tbSessions = new SessionStore();
+
+const sessionKey = (guildId, userId) => `${guildId}:${userId}`;
 
 export const data = new SlashCommandBuilder()
   .setName('teambuilder')
-  .setDescription('Build a team interactively from saved builds / Construire une équipe interactivement');
+  .setDescription('Build a team interactively from saved builds / Construire une équipe interactivement')
+  .setDMPermission(false);
 
 export async function execute(interaction) {
-  const userId = interaction.user.id;
-  tbSessions.set(userId, { name: null, slots: Array(8).fill(null), page: 0 });
-  await interaction.reply(buildTeambuilderMessage(userId));
+  if (!interaction.inGuild()) {
+    return interaction.reply({ content: t(interaction.locale, 'guildOnly'), ephemeral: true });
+  }
+  const key = sessionKey(interaction.guildId, interaction.user.id);
+  tbSessions.set(key, { name: null, slots: Array(8).fill(null), page: 0 });
+  await interaction.reply(await buildTeambuilderMessage(interaction.guildId, interaction.user.id, interaction.locale));
 }
 
 // ── Message builder ───────────────────────────────────────────────────────────
 
 /**
  * Build the full message payload for the team builder.
+ * @param {string} guildId
  * @param {string} userId
- * @returns {{ embeds, components }}
+ * @param {string} [locale]
+ * @returns {Promise<{ embeds, components }>}
  */
-export function buildTeambuilderMessage(userId) {
-  const session = tbSessions.get(userId);
-  if (!session) return { content: '⚠️ Session expired. Run /teambuilder again.', components: [] };
+export async function buildTeambuilderMessage(guildId, userId, locale) {
+  const session = tbSessions.get(sessionKey(guildId, userId));
+  if (!session) return { content: t(locale, 'sessionExpired'), components: [] };
 
   const { name, slots, page } = session;
   const pageStart = page * 4; // slots 0-3 or 4-7
 
-  const savedBuilds = listBuilds().slice(0, 24); // max 25 options = 1 custom + 24 saved
+  // 25 = Discord select-menu max. We reserve 1 slot for "Enter new build".
+  const savedBuilds = (await listBuilds({ guildId, userId })).slice(0, 24);
 
-  // ── Embed ─────────────────────────────────────────────────────────────────
   const slotLines = slots.map((s, i) =>
     s ? `**${i + 1}.** ${s.name}` : `**${i + 1}.** *(empty)*`,
   );
@@ -88,7 +100,6 @@ export function buildTeambuilderMessage(userId) {
     ];
 
     if (current) {
-      // Add "clear" option when a slot is selected
       options.push(
         new StringSelectMenuOptionBuilder()
           .setValue('tb_clear')
@@ -98,9 +109,10 @@ export function buildTeambuilderMessage(userId) {
     }
 
     for (const b of savedBuilds) {
+      const scopeIcon = b.scope === 'private' ? '🔒' : '👥';
       const opt = new StringSelectMenuOptionBuilder()
         .setValue(b.name)
-        .setLabel(b.name.slice(0, 100))
+        .setLabel(`${scopeIcon} ${b.name}`.slice(0, 100))
         .setDescription(b.code.slice(0, 50));
       if (current?.name === b.name) opt.setDefault(true);
       options.push(opt);

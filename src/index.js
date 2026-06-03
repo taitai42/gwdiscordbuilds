@@ -3,11 +3,13 @@
  */
 
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Collection, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Collection, Events, ChannelType, PermissionsBitField } from 'discord.js';
 import { readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { handleInteraction } from './interactions/interactionHandler.js';
+import { initSchema } from './lib/db.js';
+import { buildHelpEmbed } from './lib/helpContent.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -34,6 +36,36 @@ for (const file of readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
 
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Logged in as ${c.user.tag}`);
+});
+
+// ── Event: guildCreate (bot added to a server) ───────────────────────────────
+
+client.on(Events.GuildCreate, async (guild) => {
+  console.log(`[guildCreate] Added to "${guild.name}" (${guild.id})`);
+
+  const me = guild.members.me ?? await guild.members.fetchMe().catch(() => null);
+  if (!me) return;
+
+  const canSend = (ch) =>
+    ch?.type === ChannelType.GuildText &&
+    ch.permissionsFor(me)?.has(PermissionsBitField.Flags.ViewChannel | PermissionsBitField.Flags.SendMessages | PermissionsBitField.Flags.EmbedLinks);
+
+  // Prefer the configured system channel, then the first text channel we can post in.
+  const channel =
+    (canSend(guild.systemChannel) && guild.systemChannel) ||
+    guild.channels.cache.find(canSend) ||
+    null;
+
+  if (!channel) {
+    console.log(`[guildCreate] No suitable channel in "${guild.name}" — skipping welcome message.`);
+    return;
+  }
+
+  try {
+    await channel.send({ embeds: [buildHelpEmbed(guild.preferredLocale, { welcome: true })] });
+  } catch (err) {
+    console.warn(`[guildCreate] Could not send welcome message in "${guild.name}":`, err.message);
+  }
 });
 
 // ── Event: interaction ────────────────────────────────────────────────────────
@@ -66,4 +98,5 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 
+await initSchema();
 client.login(process.env.DISCORD_TOKEN);
