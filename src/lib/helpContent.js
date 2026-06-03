@@ -44,6 +44,13 @@ const CONTENT = {
       'build from a [tolkano.com](https://tolkano.com) match page. You\'ll pick ' +
       'which of the two teams to save. Note: tolkano doesn\'t expose attribute ' +
       'allocations, so imported builds render with no attributes set.',
+    cmdList:
+      '`/list [mine_only]` — list every saved build & team build in this server ' +
+      'with dropdowns to load any of them.',
+    cmdImport:
+      '`/importbuilds file:<.txt|.zip> [private]` — bulk-import your in-game ' +
+      'templates. Attach a single `.txt` or a `.zip` of your ' +
+      '`Guild Wars/Templates/` folder; the filename becomes the save name.',
     cmdHelp:
       '`/help` — show this message.',
     scopes:      '🔒 Sharing & privacy',
@@ -95,6 +102,13 @@ const CONTENT = {
       'd\'équipe depuis une page de match [tolkano.com](https://tolkano.com). ' +
       'Vous choisirez laquelle des deux équipes sauvegarder. Note : tolkano ne ' +
       'fournit pas les attributs, donc les builds importés s\'affichent sans attributs.',
+    cmdList:
+      '`/list [mine_only]` — liste tous les builds & builds d\'équipe sauvegardés ' +
+      'sur ce serveur, avec des menus déroulants pour les charger.',
+    cmdImport:
+      '`/importbuilds file:<.txt|.zip> [private]` — importe en masse vos templates ' +
+      'du jeu. Attachez un seul `.txt` ou un `.zip` de votre dossier ' +
+      '`Guild Wars/Templates/` ; le nom du fichier devient le nom de sauvegarde.',
     cmdHelp:
       '`/help` — affiche ce message.',
     scopes:      '🔒 Partage & confidentialité',
@@ -133,7 +147,7 @@ export function buildHelpEmbed(locale, { welcome = false } = {}) {
     .setDescription(c.intro)
     .addFields(
       { name: c.quickStart, value: c.quickStartBody },
-      { name: c.commands,   value: [c.cmdBuild, c.cmdLoad, c.cmdTeam, c.cmdLoadTeam, c.cmdBuilder, c.cmdTolkano, c.cmdHelp].join('\n') },
+      { name: c.commands,   value: [c.cmdBuild, c.cmdLoad, c.cmdTeam, c.cmdLoadTeam, c.cmdBuilder, c.cmdTolkano, c.cmdList, c.cmdImport, c.cmdHelp].join('\n') },
       { name: c.scopes,     value: c.scopesBody },
       { name: c.tipsTitle,  value: c.tipsBody },
       { name: c.links,      value: c.linksBody(PRIVACY_URL, TERMS_URL, REPO_URL) },

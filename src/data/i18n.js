@@ -81,6 +81,15 @@ const STRINGS = {
     loadPickTitle:      '📂 Pick a build to load',
     loadTeamPickTitle:  '📂 Pick a team build to load',
 
+    // ── /importbuilds ──────────────────────────────────────────────────────
+    importTitle:        (fmt)        => `📁 Import preview (${fmt})`,
+    importValidHeader:  (n)          => `✅ ${n} valid build(s) ready to save`,
+    importInvalidHeader:(n)          => `⚠️ ${n} skipped (invalid template code)`,
+    importFooter:       (scope)      => `Will be saved as ${scope}. Click Save All to confirm.`,
+    importSaveBtn:      (n)          => `✅ Save ${n} build(s)`,
+    importEmpty:        'ℹ️ No .txt files were found in your attachment.',
+    importDone:         (saved, total) => `✅ Imported **${saved}** of **${total}** build(s).`,
+
     // ── Tolkano: name each build screen ──────────────────────────────────────
     tolkNameTitle:      (team)         => `🏷️ Name your imported builds — ${team}`,
     tolkNameHelp:       'Click **Rename N** to set the save name for each build. Default names are auto-generated. When you are happy, click **Save & Render**.',
@@ -162,6 +171,14 @@ const STRINGS = {
     listRefresh:        '🔄 Rafraîchir',
     loadPickTitle:      '📂 Choisissez un build à charger',
     loadTeamPickTitle:  '📂 Choisissez un build d\'équipe à charger',
+
+    importTitle:        (fmt)        => `📁 Aperçu de l\'import (${fmt})`,
+    importValidHeader:  (n)          => `✅ ${n} build(s) valide(s) prêt(s) à sauvegarder`,
+    importInvalidHeader:(n)          => `⚠️ ${n} ignoré(s) (code de template invalide)`,
+    importFooter:       (scope)      => `Sera sauvegardé en tant que ${scope}. Cliquez sur Tout sauvegarder pour confirmer.`,
+    importSaveBtn:      (n)          => `✅ Sauvegarder ${n} build(s)`,
+    importEmpty:        'ℹ️ Aucun fichier .txt trouvé dans votre pièce jointe.',
+    importDone:         (saved, total) => `✅ ${saved} build(s) sur ${total} importé(s).`,
 
     tolkNameTitle:      (team)         => `🏷️ Nommez vos builds importés — ${team}`,
     tolkNameHelp:       'Cliquez sur **Renommer N** pour définir le nom de chaque build. Des noms par défaut sont générés. Quand vous êtes prêt, cliquez sur **Sauver & Afficher**.',

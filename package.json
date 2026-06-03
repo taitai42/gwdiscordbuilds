@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.57",
+    "adm-zip": "^0.5.16",
     "axios": "^1.6.0",
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",

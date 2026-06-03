@@ -42,6 +42,11 @@ export function getSession(key)          { return teamSessions.get(key); }
 export const tolkanoSessions = new SessionStore();
 export const tolkanoSessionKey = (guildId, userId) => `${guildId}:${userId}:tolkano`;
 
+// /importbuilds: stash the parsed valid entries between the slash command
+// and the "Save All" button click, keyed by guild+user.
+export const importSessions = new SessionStore();
+export const importSessionKey = (guildId, userId) => `${guildId}:${userId}:import`;
+
 const tbKey = (guildId, userId) => `${guildId}:${userId}`;
 
 export async function handleInteraction(interaction) {
@@ -231,6 +236,48 @@ async function handleButton(interaction) {
     ]);
     await interaction.deferUpdate();
     return interaction.editReply(buildListMessage(builds, teams, userId, locale));
+  }
+
+  // ── /importbuilds: Save All / Cancel ──────────────────────────────────────
+  if (customId.startsWith('import_save:') || customId.startsWith('import_cancel:')) {
+    const [action, userId] = customId.split(':');
+    if (interaction.user.id !== userId)
+      return interaction.reply({ content: t(locale, 'notYourBuilder'), ephemeral: true });
+    if (!interaction.inGuild())
+      return interaction.reply({ content: t(locale, 'guildOnly'), ephemeral: true });
+
+    const sKey = importSessionKey(interaction.guildId, userId);
+    const session = importSessions.get(sKey);
+
+    if (action === 'import_cancel') {
+      importSessions.delete(sKey);
+      return interaction.update({ content: t(locale, 'tolkCanceled'), embeds: [], components: [] });
+    }
+
+    if (!session)
+      return interaction.reply({ content: t(locale, 'sessionExpired'), ephemeral: true });
+
+    let savedCount = 0;
+    const failures = [];
+    for (const e of session.entries) {
+      try {
+        await saveBuild({
+          guildId: interaction.guildId,
+          userId,
+          name:    e.name,
+          code:    e.code,
+          private: !!session.private,
+        });
+        savedCount++;
+      } catch (err) {
+        failures.push(`${e.name}: ${err.message}`);
+      }
+    }
+    importSessions.delete(sKey);
+
+    const summary = t(locale, 'importDone', savedCount, session.entries.length)
+      + (failures.length ? `\n\n⚠️ ${failures.length} failed:\n${failures.slice(0, 5).join('\n')}` : '');
+    return interaction.update({ content: summary, embeds: [], components: [] });
   }
 
   // ── /tolkanoimport: "Import Team N" button → name-each-build screen ───────
